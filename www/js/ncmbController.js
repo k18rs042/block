@@ -7,6 +7,8 @@ var ncmbController = {
   currentUser: null,  // ログインしたユーザーのオブジェクトを格納
   screenSize: null,    // 画面サイズを格納
 
+
+
   // スコア送信
   sendScore: function(score) {
     var self = this;
@@ -49,6 +51,108 @@ var ncmbController = {
         });
   },
 
+  uuid: function() { 
+    var uuid = "", i, random;
+    for(i = 0; i < 32; i++){
+      random = Math.random() * 16 | 0;
+      if(i == 8 || i == 12 || i == 16 || i == 20){
+        uuid += "-"
+      }
+      uuid += (i == 12 ? 4:
+      ( i == 16 ? (random & 3 | 8):
+      random)).toString(16);
+    }
+    return uuid;
+  },
+
+  // ユーザー登録
+  createUser: function() {
+    var self = this;
+
+    //適当なUUIDを作成
+    var uuid = self.uuid();
+
+    //ユーザークラスのインスタンスを作成
+    //userNameとパスワードにはuuidを設定
+    var user = new self.ncmb.User({userName:uuid, password:uuid});
+
+    //会員登録を行うメソッドを実行
+    user.signUpByAccount()
+        .then(function(user){
+            // 登録完了後ログイン
+            localStorage.setItem("userName", uuid);
+            alert("ユーザー登録に成功しました！");
+        })
+        .catch(function(err){
+            // userName が被った場合はエラーが返る
+            alert("ユーザー登録に失敗しました");
+        });
+  },
+
+  // UUIDが存在すればログイン、しなければ新規作成
+  loginWithUUID: function() {
+    var self = this;
+    var userName = localStorage.getItem("userName");
+
+    if(!userName){
+        // ユーザーを作成したことがない
+        self.createUser();
+    } else if(!self.currentUser) {
+        // ログアウト状態：userNameとパスワードでログイン
+        // 今回はパスワード（第2引数）もuserNameを使用
+        self.ncmb.User.login(userName, userName)
+            .then(function(user){
+                // ログイン後：ユーザーデータの更新
+                self.currentUser = user;
+                self.refreshCurrentUser();
+            })
+            .catch(function(err){
+                // 失敗した場合：ユーザー作成
+                console.log(err);
+                self.createUser();
+            });
+    } else {
+        // ログアウトしていない（前のログインデータが残っている）
+        self.currentUser = self.ncmb.User.getCurrentUser();
+
+        // userオブジェクトを使用してログイン
+        self.ncmb.User.login(self.currentUser)
+            .then(function(user){
+                // ログイン後：ユーザーデータの更新
+                self.currentUser = user;
+                self.refreshCurrentUser();
+            })
+            .catch(function(err){
+                // セッション切れの場合はログアウトして再ログイン
+                console.log(err);
+
+                self.ncmb.User.logout();  // ログアウト
+                self.currentUser = null;
+                self.loginWithUUID();       // 再ログイン
+            });
+    }
+  },
+
+  // currentUserプロパティを更新
+  refreshCurrentUser: function() {
+    var self = this;
+    if(!self.currentUser) return;
+
+    // オブジェクトIDを用いてユーザーを検索（fetchById）
+    self.ncmb.User.fetchById(self.currentUser.get("objectId"))
+             .then(function(user){
+                 self.currentUser = user;
+              })
+             .catch(function(err){
+                console.log(err);
+                self.currentUser = null;
+              });
+  },
+
+  
+
+
+
 
 
 
@@ -57,6 +161,7 @@ var ncmbController = {
     var self = this;
     self.ncmb = new NCMB(self.APPLICATION_KEY, self.CLIENT_KEY);    // mobile backendの初期化
     self.screenSize = screenSize;
+    ncmbController.createUser();
   }
 
 }
